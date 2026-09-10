@@ -1,13 +1,35 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import sqlite3
+import os
+import psycopg2
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = FastAPI(title="TIME TRAVEL API")
 
-DB_NAME = "time_travel.db"
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+
+def get_connection():
+    return psycopg2.connect(DATABASE_URL)
 
 
 class BookingRequest(BaseModel):
+    booking_id: str
+
+
+class ChangeBookingRequest(BaseModel):
+    booking_id: str
+    destination: str
+    travel_year: int
+
+
+class CancelBookingRequest(BaseModel):
+    booking_id: str
+
+
+class RefundRequest(BaseModel):
     booking_id: str
 
 
@@ -21,18 +43,21 @@ def health():
     return {"status": "ok"}
 
 
+# Get booking - GET
 @app.get("/bookings/{booking_id}")
 def get_booking(booking_id: str):
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     booking = cursor.fetchone()
+
+    cursor.close()
     conn.close()
 
     if booking is None:
@@ -51,21 +76,21 @@ def get_booking(booking_id: str):
     }
 
 
-
-
-
+# Get booking - POST
 @app.post("/bookings")
 def get_booking_post(request: BookingRequest):
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (request.booking_id.upper(),)
     )
 
     booking = cursor.fetchone()
+
+    cursor.close()
     conn.close()
 
     if booking is None:
@@ -83,36 +108,27 @@ def get_booking_post(request: BookingRequest):
         "price": booking[5]
     }
 
-class ChangeBookingRequest(BaseModel):
-    booking_id: str
-    destination: str
-    travel_year: int
 
-class CancelBookingRequest(BaseModel):
-    booking_id: str
-
-class RefundRequest(BaseModel):
-    booking_id: str
-
-
+# Change booking
 @app.put("/bookings/{booking_id}")
 def change_booking(
     booking_id: str,
     request: ChangeBookingRequest
 ):
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     # Check if booking exists
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     booking = cursor.fetchone()
 
     if booking is None:
+        cursor.close()
         conn.close()
 
         raise HTTPException(
@@ -124,8 +140,8 @@ def change_booking(
     cursor.execute(
         """
         UPDATE bookings
-        SET destination = ?, travel_year = ?
-        WHERE booking_id = ?
+        SET destination = %s, travel_year = %s
+        WHERE booking_id = %s
         """,
         (
             request.destination,
@@ -138,12 +154,13 @@ def change_booking(
 
     # Get updated booking
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     updated_booking = cursor.fetchone()
 
+    cursor.close()
     conn.close()
 
     return {
@@ -157,24 +174,26 @@ def change_booking(
     }
 
 
+# Cancel booking
 @app.put("/bookings/{booking_id}/cancel")
 def cancel_booking(
     booking_id: str,
     request: CancelBookingRequest
 ):
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     # Check if booking exists
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     booking = cursor.fetchone()
 
     if booking is None:
+        cursor.close()
         conn.close()
 
         raise HTTPException(
@@ -186,8 +205,8 @@ def cancel_booking(
     cursor.execute(
         """
         UPDATE bookings
-        SET status = ?
-        WHERE booking_id = ?
+        SET status = %s
+        WHERE booking_id = %s
         """,
         (
             "cancelled",
@@ -199,12 +218,13 @@ def cancel_booking(
 
     # Get updated booking
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     updated_booking = cursor.fetchone()
 
+    cursor.close()
     conn.close()
 
     return {
@@ -218,25 +238,26 @@ def cancel_booking(
     }
 
 
-
+# Process refund
 @app.put("/bookings/{booking_id}/refund")
 def process_refund(
     booking_id: str,
     request: RefundRequest
 ):
 
-    conn = sqlite3.connect(DB_NAME)
+    conn = get_connection()
     cursor = conn.cursor()
 
     # Check if booking exists
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     booking = cursor.fetchone()
 
     if booking is None:
+        cursor.close()
         conn.close()
 
         raise HTTPException(
@@ -246,6 +267,7 @@ def process_refund(
 
     # Check if booking is cancelled
     if booking[4].lower() != "cancelled":
+        cursor.close()
         conn.close()
 
         raise HTTPException(
@@ -257,8 +279,8 @@ def process_refund(
     cursor.execute(
         """
         UPDATE bookings
-        SET status = ?
-        WHERE booking_id = ?
+        SET status = %s
+        WHERE booking_id = %s
         """,
         (
             "refunded",
@@ -270,12 +292,13 @@ def process_refund(
 
     # Get updated booking
     cursor.execute(
-        "SELECT * FROM bookings WHERE booking_id = ?",
+        "SELECT * FROM bookings WHERE booking_id = %s",
         (booking_id.upper(),)
     )
 
     updated_booking = cursor.fetchone()
 
+    cursor.close()
     conn.close()
 
     return {

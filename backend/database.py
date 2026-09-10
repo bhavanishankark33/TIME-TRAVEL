@@ -1,10 +1,14 @@
-import sqlite3
+import os
+import psycopg2
+from dotenv import load_dotenv
 
-DB_NAME = "time_travel.db"
+load_dotenv()
+
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    return psycopg2.connect(DATABASE_URL)
 
 
 def create_database():
@@ -31,10 +35,11 @@ def create_database():
 ]
 
     cursor.executemany("""
-        INSERT OR IGNORE INTO bookings
-        (booking_id, customer_name, destination, travel_year, status, price)
-        VALUES (?, ?, ?, ?, ?, ?)
-    """, bookings)
+    INSERT INTO bookings
+    (booking_id, customer_name, destination, travel_year, status, price)
+    VALUES (%s, %s, %s, %s, %s, %s)
+    ON CONFLICT (booking_id) DO NOTHING
+""", bookings)
 
     conn.commit()
     conn.close()
