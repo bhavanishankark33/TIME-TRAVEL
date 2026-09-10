@@ -1,2 +1,14 @@
+[project]
+name = "time-travel"
+version = "1.0.0"
+description = "TIME TRAVEL AI customer service API"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn",
+    "python-dotenv",
+    "psycopg2-binary"
+]
+
 [tool.vercel]
 entrypoint = "backend.main:app"
